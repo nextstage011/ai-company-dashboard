@@ -239,9 +239,9 @@
       <option value="1000000000">10億円（本命）</option>
     </select></div>
     <div class="desc" id="cfgDesc"></div>
-    <div class="desc">🦊 <b>レイと壁打ちして決めたい時</b>: このMacの Claude Code に「レイと壁打ちしたい」と伝える（Maxプラン内・API費ゼロ）。
-    レイが事業案を批判的に詰め、合意した提案を保存してくれるので、下のボタンで反映できます（スマホからでもOK）。</div>
-    <button id="loadPlan" onclick="loadPlan()">🦊 壁打ちの提案を読み込む</button>
+    <div class="desc">🔬 <b>AIでプランを検証してから設立するのが本来の使い方</b>: このMacの Claude Code に「ビジネスプランを検証して」と伝える（Maxプラン内・API費ゼロ）。
+    AIが市場・競合の実データを調査し、成約率・解約率などの推定値と、そのプラン固有の意思決定イベントまで設計した「シナリオパック」を作ります。下のボタンで読み込んで設立（スマホからでもOK）。</div>
+    <button id="loadPlan" onclick="loadPlan()">🔬 AI検証済みプランを読み込む</button>
     <div class="hint" id="planMsg"></div>
     <button class="start" onclick="startSim()">この条件で設立する 🚀</button>
     <button class="ghost" onclick="closeSetup()">閉じる（今の会社に戻る）</button>
@@ -306,7 +306,8 @@ const SCENARIOS = {
           desc:'ユーザーは集めやすいが離脱も速い。ヒットすれば高評価（20倍）。開発は重め。'},
 };
 const DIFFS = {easy:{conv:1.3, churn:0.8}, normal:{conv:1, churn:1}, hard:{conv:0.75, churn:1.3}};
-const P = () => SCENARIOS[S.cfg.type];
+// AI検証済みプランは cfg.params でタイプ既定値を上書きできる（conv/churn/margin/valMult/devSpeed/leadMult）
+const P = () => Object.assign({}, SCENARIOS[S.cfg.type], S.cfg.params || {});
 const D = () => DIFFS[S.cfg.diff];
 function defaultCfg(){ return {name:'AIカンパニー', type:'saas', price:9800, capital:3000000, diff:'normal', target:100000000}; }
 
@@ -395,15 +396,15 @@ const DECISIONS = {
     desc:  p => `採用は株主専権のため、役員会の検討結果をつけて上申します。${CANDIDATES[p.cand].pitch}。`,
     board: p => ({
       rec: '全会一致 → 採用を推奨',
-      merits: [CANDIDATES[p.cand].pitch, '今のボトルネックを解消する役割と役員会で確認済み'],
-      demerits: ['ランニングコストが月3万円増える', '役割が増える分、統率コストが上がる'],
+      merits: [CANDIDATES[p.cand].pitch, 'AI社員の稼働費はMaxプラン内＝ほぼゼロ', '今のボトルネックを解消する役割と役員会で確認済み'],
+      demerits: ['ツール等の実費が月1万円弱増える', '役割が増える分、株主の決裁負荷と統率コストが上がる'],
       voices: [
         {av:'🦊', say:'組織のボトルネックはここ。早く埋めたい'},
-        {av:'🐱', say:'月3万円は現MRRでも回収可能と試算'},
+        {av:'🐱', say:'費用より統率が論点。役割を明確にできるなら賛成'},
       ],
     }),
     options: p => [
-      {label:'採用する', hint:'月コスト+3万円', apply(){
+      {label:'採用する', hint:'実費+月1万円弱', apply(){
         const c = CANDIDATES[p.cand];
         S.agents.push({...c, skill:1, status:'working', task:'', taskUntil:0});
         if (p.cand==='momo') S.churnCut += 0.02;
@@ -503,7 +504,34 @@ const DECISIONS = {
       {label:'ここで畳む', hint:'倒産（ゲーム終了）', apply(){ endGame('bankrupt'); }},
     ],
   },
+  /* AI検証済みプラン固有のイベント（Claude Codeがプラン検証時に設計し cfg.events で供給） */
+  plan: {
+    icon:'📋', critical:false,
+    title: p => p.ev.title,
+    desc:  p => p.ev.desc || '',
+    board: p => p.ev.board || null,
+    options: p => (p.ev.options || []).map(o => ({
+      label: o.label, hint: o.hint || '',
+      apply(){ applyEffects(o.effects || {}); addLog('📋 ' + p.ev.title + ' → ' + o.label); },
+    })),
+  },
 };
+
+/* プランイベントの効果を宣言的に適用する */
+function applyEffects(e){
+  if (e.cash) S.cash += e.cash;
+  if (e.invest){ S.cash += e.invest; S.invested += e.invest; }
+  if (e.leads) S.leads += e.leads;
+  if (e.product) S.product = Math.max(0, Math.min(100, S.product + e.product));
+  if (e.quality) S.quality = Math.max(0, Math.min(95, S.quality + e.quality));
+  if (e.price) S.price = e.price;
+  if (e.convMult) S.convMult *= e.convMult;
+  if (e.churnCut) S.churnCut += e.churnCut;
+  if (e.prodMult) S.prodMult *= e.prodMult;
+  if (e.leadBoost) S.leadBoost = Math.max(S.leadBoost, e.leadBoost);
+  if (e.productFreeze) S.productFreeze += e.productFreeze;
+  recalcMrr();
+}
 
 /* 役員会の権限内で完結する小案件（1件10万円未満・予算内） */
 const BOARD_MATTERS = [
@@ -517,7 +545,9 @@ const BOARD_MATTERS = [
 ];
 
 function pushDecision(type, payload){
-  if (S.decisions.some(d => d.type === type)) return;
+  if (type === 'plan'){
+    if (S.decisions.some(d => d.type === 'plan' && d.payload.ev.title === payload.ev.title)) return;
+  } else if (S.decisions.some(d => d.type === type)) return;
   S.decisions.push({uid:uid++, type, payload: payload||{}, day:S.day});
   if (DECISIONS[type].critical) S.running = false;
   const agentByType = {ad:'mina', contract:'kent', hire:'rei', price:'yuki', pivot:'rei'};
@@ -572,7 +602,8 @@ function tick(){
   if (conv > 0){ S.customers += conv; recalcMrr(); if (S.customers<=3 || rnd()<0.3) addLog(`🎉 新規顧客 +${conv}（計${S.customers}社）`); }
 
   // お金: 日次
-  const dailyCost = (S.agents.length*1000 + 500) * 0.95; // ユキがコスト最適化
+  // AI社員の稼働はMaxプラン内＝ほぼゼロ。実費はツール・インフラ程度（ユキがコスト最適化）
+  const dailyCost = (S.agents.length*300 + 200) * 0.95;
   S.cash += (S.mrr/30) * P().margin - dailyCost;
 
   // 月次決算
@@ -581,6 +612,18 @@ function tick(){
     const churned = Math.round(S.customers * Math.max(0, churnRate));
     if (churned>0){ S.customers -= churned; recalcMrr(); }
     addLog(`🧾 月次決算（ユキ）: MRR ${YEN(S.mrr)} / 現金 ${YEN(S.cash)} / 解約 ${churned}社 / 企業価値 ${YEN(valuation())}`);
+  }
+
+  // AI検証済みプラン固有のイベント（day到達で発火・1日1件）
+  if (S.cfg.events){
+    for (const ev of S.cfg.events){
+      if (!ev._done && S.day >= ev.day){
+        ev._done = true;
+        pushDecision('plan', {ev});
+        addLog('🏛 役員会で議論 → 👑 決裁ボックスへ上申: ' + ev.title);
+        break;
+      }
+    }
   }
 
   // 役員会の権限内案件（株主に来ない・自動処理）
@@ -873,11 +916,18 @@ function startSim(){
     diff: $('cfgDiff').value,
     target: +$('cfgTarget').value,
   };
+  // AI検証済みプランを読み込んで設立する場合、推定値と固有イベントを引き継ぐ
+  if (loadedPlan && loadedPlan.name === cfg.name){
+    if (loadedPlan.params) cfg.params = loadedPlan.params;
+    if (Array.isArray(loadedPlan.events)) cfg.events = JSON.parse(JSON.stringify(loadedPlan.events));
+  }
   S = newSim(cfg);
   addLog(`🏢 ${cfg.name} 設立！ ${SCENARIOS[type].label}・自己資金${YEN(cfg.capital)}・Exit目標 ${YEN(cfg.target)}`);
   closeSetup(); save(); render();
 }
-/* ---- レイとの壁打ち（Claude Code＝Maxプラン内で実施 → state/plan.json 経由で受け取る） ---- */
+/* ---- AI検証済みプラン（Claude Code＝Maxプラン内で検証 → state/plan.json のシナリオパックを読む） ---- */
+let loadedPlan = null;
+
 async function loadPlan(){
   const msg = $('planMsg');
   msg.textContent = '読み込み中…';
@@ -890,16 +940,22 @@ async function loadPlan(){
     try{ plan = await fetchGh('plan.json'); }catch(e){}
   }
   if (!plan || !SCENARIOS[plan.type]){
-    msg.textContent = 'まだ提案がありません。このMacの Claude Code に「レイと壁打ちしたい」と伝えてください。';
+    msg.textContent = 'まだ検証済みプランがありません。このMacの Claude Code に「ビジネスプランを検証して」と伝えてください。';
     return;
   }
+  loadedPlan = plan;
   if (plan.name) $('cfgName').value = plan.name;
   $('cfgType').value = plan.type; setupTypeChanged(false);
   if (+plan.price > 0) $('cfgPrice').value = Math.round(+plan.price);
   if ([1000000,3000000,10000000].includes(+plan.capital)) $('cfgCapital').value = String(+plan.capital);
   if (DIFFS[plan.diff]) $('cfgDiff').value = plan.diff;
   if ([30000000,100000000,1000000000].includes(+plan.target)) $('cfgTarget').value = String(+plan.target);
-  msg.textContent = '✔ 反映しました' + (plan.reason ? '（' + plan.reason + '）' : '') + (plan.date ? ' ｜ ' + plan.date + ' の壁打ちより' : '');
+  let extra = '';
+  if (plan.params) extra += '\n🔬 AI検証済みの推定値（成約率・解約率・粗利等）で動きます。';
+  if (plan.events && plan.events.length) extra += '\n📋 このプラン固有の意思決定イベント ' + plan.events.length + '件を収録。';
+  if (plan.evidence && plan.evidence.length) extra += '\n📊 根拠: ' + plan.evidence.join(' ／ ');
+  $('cfgDesc').textContent += extra;
+  msg.textContent = '✔ 反映しました' + (plan.reason ? '（' + plan.reason + '）' : '') + (plan.date ? ' ｜ ' + plan.date + ' 検証' : '');
 }
 
 function renderSetupHist(){
