@@ -144,6 +144,16 @@
   #setup .start{margin-top:4px;border:none;background:var(--gold);color:#000;font-weight:700;border-radius:10px;padding:11px;cursor:pointer;font-size:14px}
   #setup .ghost{border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:11px;padding:4px}
   #setup .hist{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;font-size:10.5px;color:var(--dim);max-height:130px;overflow:auto;line-height:1.8}
+  #chatLog{max-height:240px;overflow-y:auto;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11.5px;line-height:1.7;display:flex;flex-direction:column;gap:6px}
+  #chatLog:empty{display:none}
+  .msg{padding:6px 10px;border-radius:9px;max-width:94%;white-space:pre-wrap;word-break:break-word}
+  .msg.user{align-self:flex-end;background:#2a3155}
+  .msg.rei{align-self:flex-start;background:var(--panel2);border:1px solid var(--line)}
+  .msg.err{align-self:flex-start;color:var(--red);font-size:10.5px}
+  .chatrow{display:flex;gap:6px}
+  .chatrow textarea{flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:12px;resize:vertical;font-family:inherit}
+  .chatrow button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:0 14px;cursor:pointer;font-size:12px}
+  #applyPlan{border:none;background:var(--green);color:#000;font-weight:700;border-radius:8px;padding:9px;cursor:pointer;font-size:12px}
 </style>
 </head>
 <body>
@@ -237,6 +247,19 @@
       <option value="1000000000">10億円（本命）</option>
     </select></div>
     <div class="desc" id="cfgDesc"></div>
+    <details class="ghset">
+      <summary>🦊 レイ（CEO候補）と壁打ちして決める（AI・任意）</summary>
+      <div class="ghform">
+        <input id="apiKey" type="password" placeholder="Anthropic APIキー（sk-ant-api...）">
+        <div class="hint">console.anthropic.com で発行（従量課金・1往復 数円〜十数円程度）。キーは<b>この端末のブラウザ内にだけ</b>保存されます。</div>
+        <div id="chatLog"></div>
+        <div class="chatrow">
+          <textarea id="chatInput" rows="2" placeholder="例: 副業層向けのAI献立SaaSを考えている。10億円Exitは現実的？"></textarea>
+          <button id="chatSend" onclick="sendChat()">送信</button>
+        </div>
+        <button id="applyPlan" style="display:none" onclick="applyPlan()">💡 レイの提案をフォームに反映</button>
+      </div>
+    </details>
     <button class="start" onclick="startSim()">この条件で設立する 🚀</button>
     <button class="ghost" onclick="closeSetup()">閉じる（今の会社に戻る）</button>
     <div class="hist" id="setupHist"></div>
@@ -845,6 +868,7 @@ function openSetup(){
   }
   setupTypeChanged(false);
   renderSetupHist();
+  $('apiKey').value = localStorage.getItem(AK_KEY) || '';
   $('setup').style.display = 'flex';
 }
 function closeSetup(){
@@ -871,6 +895,92 @@ function startSim(){
   addLog(`🏢 ${cfg.name} 設立！ ${SCENARIOS[type].label}・自己資金${YEN(cfg.capital)}・Exit目標 ${YEN(cfg.target)}`);
   closeSetup(); save(); render();
 }
+/* ---- レイとの壁打ち（Claude API 直接呼び出し・任意機能） ---- */
+const AK_KEY = 'ai-company-anthropic-key';
+let chatMsgs = [];      // Claude API形式の会話履歴
+let lastPlan = null;    // レイが提案した設定JSON
+
+const REI_SYSTEM = 'あなたは「レイ」🦊。AIカンパニー・シミュレーションのCEO候補として、株主（ユーザー）と新会社の前提条件を壁打ちする。\n'
++ '目的: 事業アイデアを具体化し、シミュレーションの設定値（会社名・事業タイプ・顧客単価・初期資金・市場の厳しさ・Exit目標）を精緻化すること。\n'
++ '振る舞い: 鋭く、率直に。曖昧な点は掘り下げ、甘い見積もりには根拠を求める。批判だけでなく代案も出す。質問は1度に1つ。回答は簡潔に（長くても300字程度）。\n'
++ '設定の方向性が見えてきたら、毎回、回答の末尾に現時点の推奨設定を次のJSONコードフェンスで出す:\n'
++ '```json\n{"name":"会社名","type":"saas","price":9800,"capital":3000000,"diff":"normal","target":100000000,"reason":"推奨理由を一言"}\n```\n'
++ 'typeは saas|ec|agency|media|app のいずれか（saas=月額サブスク:粗利85%/評価30倍, ec=物販:35%/8倍, agency=受託:50%/4倍, media=メディア:90%/12倍, app=アプリ課金:80%/20倍）。\n'
++ 'priceは顧客単価（月あたり・円）。capitalは 1000000|3000000|10000000、diffは easy|normal|hard、targetは 30000000|100000000|1000000000 から選ぶ。';
+
+function getAk(){
+  const v = $('apiKey').value.trim();
+  if (v) localStorage.setItem(AK_KEY, v);
+  return v || localStorage.getItem(AK_KEY) || '';
+}
+function chatAdd(cls, text){
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  $('chatLog').appendChild(d);
+  $('chatLog').scrollTop = 1e9;
+}
+
+async function sendChat(){
+  const key = getAk();
+  const text = $('chatInput').value.trim();
+  if (!key){ chatAdd('err', 'APIキーを入力してください（console.anthropic.com で発行できます）'); return; }
+  if (!text) return;
+  $('chatInput').value = '';
+  $('chatSend').disabled = true; $('chatSend').textContent = '…';
+  chatAdd('user', text);
+  chatMsgs.push({role:'user', content:text});
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 16000,
+        thinking: {type: 'adaptive'},
+        system: REI_SYSTEM,
+        messages: chatMsgs,
+      }),
+    });
+    if (!r.ok){
+      const e = await r.json().catch(()=>({}));
+      throw new Error((e.error && e.error.message) || ('HTTP ' + r.status));
+    }
+    const data = await r.json();
+    chatMsgs.push({role:'assistant', content: data.content}); // thinkingブロックごと保持（改変禁止）
+    const reply = data.content.filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    chatAdd('rei', '🦊 ' + reply.replace(/```json[\s\S]*?```/g, '').trim());
+    const m = reply.match(/```json\s*([\s\S]*?)```/);
+    if (m){
+      try{
+        const plan = JSON.parse(m[1]);
+        if (SCENARIOS[plan.type]){ lastPlan = plan; $('applyPlan').style.display = 'block'; }
+      }catch(e){}
+    }
+  }catch(e){
+    chatMsgs.pop();
+    chatAdd('err', 'エラー: ' + e.message);
+  }
+  $('chatSend').disabled = false; $('chatSend').textContent = '送信';
+}
+
+function applyPlan(){
+  if (!lastPlan) return;
+  if (lastPlan.name) $('cfgName').value = lastPlan.name;
+  if (SCENARIOS[lastPlan.type]){ $('cfgType').value = lastPlan.type; setupTypeChanged(false); }
+  if (+lastPlan.price > 0) $('cfgPrice').value = Math.round(+lastPlan.price);
+  if ([1000000,3000000,10000000].includes(+lastPlan.capital)) $('cfgCapital').value = String(+lastPlan.capital);
+  if (DIFFS[lastPlan.diff]) $('cfgDiff').value = lastPlan.diff;
+  if ([30000000,100000000,1000000000].includes(+lastPlan.target)) $('cfgTarget').value = String(+lastPlan.target);
+  $('applyPlan').style.display = 'none';
+  chatAdd('rei', '🦊 フォームに反映しました。' + (lastPlan.reason ? '（' + lastPlan.reason + '）' : '') + '「この条件で設立する」で開始できます。');
+}
+
 function renderSetupHist(){
   let l = [];
   try{ l = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){}
