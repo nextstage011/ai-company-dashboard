@@ -130,6 +130,20 @@
   #overlay .big{font-size:30px;color:var(--gold);font-weight:800;margin:10px 0}
   #overlay ul{text-align:left;font-size:12px;color:#c3c9e4;line-height:1.9;margin:10px 0 16px;list-style:none;max-height:180px;overflow-y:auto}
   #overlay button{border:none;background:var(--gold);color:#000;font-weight:700;border-radius:10px;padding:10px 26px;cursor:pointer;font-size:14px}
+
+  /* ===== 会社設立（前提条件）モーダル ===== */
+  #setup{display:none;position:fixed;inset:0;background:rgba(8,10,20,.88);z-index:60;align-items:center;justify-content:center;overflow:auto}
+  #setup .box{background:var(--panel);border:2px solid var(--blue);border-radius:16px;padding:24px 26px;max-width:480px;width:92%;margin:16px}
+  #setup h2{font-size:18px;margin-bottom:4px}
+  #setup .sub{font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.6}
+  .setform{display:flex;flex-direction:column;gap:10px}
+  .setform label{font-size:11px;color:var(--dim);display:block;margin-bottom:3px}
+  .setform input,.setform select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px}
+  .setform .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .setform .desc{font-size:10.5px;color:#c3c9e4;line-height:1.6;background:var(--bg);border-radius:8px;padding:8px 10px}
+  #setup .start{margin-top:4px;border:none;background:var(--gold);color:#000;font-weight:700;border-radius:10px;padding:11px;cursor:pointer;font-size:14px}
+  #setup .ghost{border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:11px;padding:4px}
+  #setup .hist{margin-top:10px;border-top:1px dashed var(--line);padding-top:8px;font-size:10.5px;color:var(--dim);max-height:130px;overflow:auto;line-height:1.8}
 </style>
 </head>
 <body>
@@ -147,6 +161,7 @@
     <div class="kpi"><div class="l">MRR</div><div class="v green" id="kMrr">—</div></div>
     <div class="kpi"><div class="l">顧客</div><div class="v blue" id="kCust">—</div></div>
     <div class="kpi"><div class="l">企業価値</div><div class="v purple" id="kVal">—</div></div>
+    <div class="kpi"><div class="l">目標達成</div><div class="v" id="kGoal">—</div></div>
   </div>
   <div class="ctrl" id="simCtrl">
     <button id="btnPlay" onclick="togglePlay()">▶</button>
@@ -195,6 +210,39 @@
 
 <div id="overlay"><div class="box" id="overlayBox"></div></div>
 
+<div id="setup"><div class="box">
+  <h2>🏢 新しい会社を設立する</h2>
+  <div class="sub">前提条件を決めてシミュレーション開始。事業タイプによって単価・成約率・解約率・売却時の評価倍率が変わります。</div>
+  <div class="setform">
+    <div><label>会社名（事業名）</label><input id="cfgName" placeholder="例: AIレシピSaaS" value="AIカンパニー"></div>
+    <div class="grid2">
+      <div><label>事業タイプ</label><select id="cfgType" onchange="setupTypeChanged()"></select></div>
+      <div><label>顧客単価（月あたり・円）</label><input id="cfgPrice" type="number" min="100" step="100"></div>
+    </div>
+    <div class="grid2">
+      <div><label>初期資金</label><select id="cfgCapital">
+        <option value="1000000">100万円（リーン）</option>
+        <option value="3000000" selected>300万円（標準）</option>
+        <option value="10000000">1,000万円（余裕）</option>
+      </select></div>
+      <div><label>市場の厳しさ</label><select id="cfgDiff">
+        <option value="easy">ゆるい（練習向け）</option>
+        <option value="normal" selected>普通</option>
+        <option value="hard">厳しい（本番想定）</option>
+      </select></div>
+    </div>
+    <div><label>Exit目標（売却額）</label><select id="cfgTarget">
+      <option value="30000000">3,000万円（スモールExit）</option>
+      <option value="100000000" selected>1億円</option>
+      <option value="1000000000">10億円（本命）</option>
+    </select></div>
+    <div class="desc" id="cfgDesc"></div>
+    <button class="start" onclick="startSim()">この条件で設立する 🚀</button>
+    <button class="ghost" onclick="closeSetup()">閉じる（今の会社に戻る）</button>
+    <div class="hist" id="setupHist"></div>
+  </div>
+</div></div>
+
 <script>
 /* ================================================================
    AIカンパニー・オフィス
@@ -238,25 +286,55 @@ const ACTS = {
   hana:['UIをデザイン中','LPをリデザイン中','ブランド調整中'],
 };
 
+/* ---------------- 事業タイプ（前提条件プリセット） ---------------- */
+const SCENARIOS = {
+  saas:  {label:'SaaS（月額サブスク）',   price:9800,   conv:0.06, churn:0.04, margin:0.85, valMult:30, devSpeed:1.0, leadMult:1.0,
+          desc:'王道。解約率を抑えれば企業価値が最も高くつく（月商の30倍評価）。ただし開発は重く、立ち上がりは遅い。'},
+  ec:    {label:'EC / D2C（物販）',       price:6000,   conv:0.10, churn:0.08, margin:0.35, valMult:8,  devSpeed:1.4, leadMult:1.3,
+          desc:'売りやすく立ち上がりが速いが、粗利が薄く（35%）評価倍率も低め（8倍）。回転で稼ぐ事業。'},
+  agency:{label:'受託・代理店',           price:150000, conv:0.02, churn:0.06, margin:0.50, valMult:4,  devSpeed:1.6, leadMult:0.4,
+          desc:'単価が高く現金は稼ぎやすい。ただし労働集約で売却価値がつきにくい（4倍評価）。Exit向きではない。'},
+  media: {label:'メディア・コンテンツ',   price:1500,   conv:0.15, churn:0.05, margin:0.90, valMult:12, devSpeed:1.2, leadMult:2.2,
+          desc:'集客力そのものが資産になる。粗利は厚いが単価が低く、数を積む勝負。'},
+  app:   {label:'モバイルアプリ（課金）', price:980,    conv:0.20, churn:0.10, margin:0.80, valMult:20, devSpeed:0.8, leadMult:3.0,
+          desc:'ユーザーは集めやすいが離脱も速い。ヒットすれば高評価（20倍）。開発は重め。'},
+};
+const DIFFS = {easy:{conv:1.3, churn:0.8}, normal:{conv:1, churn:1}, hard:{conv:0.75, churn:1.3}};
+const P = () => SCENARIOS[S.cfg.type];
+const D = () => DIFFS[S.cfg.diff];
+function defaultCfg(){ return {name:'AIカンパニー', type:'saas', price:9800, capital:3000000, diff:'normal', target:100000000}; }
+
 /* ---------------- シミュレーション状態 ---------------- */
 const SAVE_KEY = 'ai-company-sim-v1';
+const HIST_KEY = 'ai-company-history';
 let S = null;          // sim state
 let mode = 'sim';
 let liveData = null;   // {company, agents}
 let liveTimer = null;
 let acc = 0, lastT = 0;
 
-function newSim(){
+function newSim(cfg){
+  cfg = cfg || defaultCfg();
   return {
-    day:0, cash:3000000, invested:3000000,
+    day:0, cash:cfg.capital, invested:cfg.capital, cfg,
     mrr:0, customers:0, leads:0,
-    product:0, quality:50, insight:0, price:9800,
+    product:0, quality:50, insight:0, price:cfg.price,
     convMult:1, churnCut:0, leadBoost:0, productFreeze:0, prodMult:1,
     launched:false, extraFunds:0, lastPriceDay:-999, pivoted:false,
     nextEventDay:8, running:true, speed:1, over:null,
     agents: BASE_AGENTS.map(a => ({...a, skill:1, status:'working', task:'', taskUntil:0})),
     decisions:[], log:[], ownerHistory:[],
   };
+}
+
+function endGame(type, extra){
+  S.over = Object.assign({type}, extra || {});
+  try{
+    const l = JSON.parse(localStorage.getItem(HIST_KEY) || '[]');
+    l.unshift({date: new Date().toLocaleDateString('ja-JP'), name: S.cfg.name, type: S.cfg.type,
+               days: S.day, outcome: type, price: (extra && extra.price) || 0, invested: S.invested, target: S.cfg.target});
+    localStorage.setItem(HIST_KEY, JSON.stringify(l.slice(0, 30)));
+  }catch(e){}
 }
 
 /* ---------------- 株主決裁（イベント定義） ---------------- */
@@ -343,17 +421,20 @@ const DECISIONS = {
         {av:'🐧', say:'現場感覚では値下げの方が成約は伸びる'},
       ],
     }),
-    options: () => [
-      {label:'値上げ ¥14,800', hint:'単価↑ 成約↓ 解約↑', apply(){
-        S.price = 14800; S.convMult *= 0.8; S.churnCut -= 0.01;
-        addLog('💴 価格を月額14,800円に改定。'); recalcMrr();
-      }},
-      {label:'値下げ ¥4,980', hint:'成約↑ 単価↓', apply(){
-        S.price = 4980; S.convMult *= 1.4;
-        addLog('💴 価格を月額4,980円に改定。'); recalcMrr();
-      }},
-      {label:'据え置き', hint:'', apply(){ addLog('価格は据え置き。'); }},
-    ],
+    options: () => {
+      const up = Math.round(S.price*1.5/10)*10, down = Math.max(100, Math.round(S.price*0.5/10)*10);
+      return [
+        {label:`値上げ ¥${up.toLocaleString()}`, hint:'単価↑ 成約↓ 解約↑', apply(){
+          S.price = up; S.convMult *= 0.8; S.churnCut -= 0.01;
+          addLog(`💴 価格を月額${up.toLocaleString()}円に改定。`); recalcMrr();
+        }},
+        {label:`値下げ ¥${down.toLocaleString()}`, hint:'成約↑ 単価↓', apply(){
+          S.price = down; S.convMult *= 1.4;
+          addLog(`💴 価格を月額${down.toLocaleString()}円に改定。`); recalcMrr();
+        }},
+        {label:'据え置き', hint:'', apply(){ addLog('価格は据え置き。'); }},
+      ];
+    },
   },
   pivot: {
     icon:'🔄', critical:true,
@@ -391,7 +472,7 @@ const DECISIONS = {
       ],
     }),
     options: p => [
-      {label:'売却する 🎉', hint:'Exit達成！', apply(){ S.over = {type:'sold', price:p.price}; }},
+      {label:'売却する 🎉', hint:'Exit達成！', apply(){ endGame('sold', {price:p.price}); }},
       {label:'断って続ける', hint:'さらに成長を狙う', apply(){ addLog('🏦 オファーを辞退。さらなる成長を目指す。'); }},
     ],
   },
@@ -413,7 +494,7 @@ const DECISIONS = {
         S.cash += 2000000; S.invested += 2000000; S.extraFunds++;
         addLog('🚨 株主が200万円を追加出資。経営継続。');
       }},
-      {label:'ここで畳む', hint:'倒産（ゲーム終了）', apply(){ S.over = {type:'bankrupt'}; }},
+      {label:'ここで畳む', hint:'倒産（ゲーム終了）', apply(){ endGame('bankrupt'); }},
     ],
   },
 };
@@ -453,7 +534,7 @@ function decide(du, idx){
 /* ---------------- シミュレーション・1日 ---------------- */
 function addLog(text){ S.log.unshift({day:S.day, text}); if (S.log.length>120) S.log.pop(); }
 function recalcMrr(){ S.mrr = S.customers * S.price; }
-function valuation(){ return Math.max(0, S.mrr*30 + S.cash*0.6); }
+function valuation(){ return Math.max(0, S.mrr*P().valMult + S.cash*0.6); }
 function has(id){ return S.agents.some(a=>a.id===id); }
 
 function tick(){
@@ -465,7 +546,7 @@ function tick(){
   S.insight += 0.15;
   if (S.productFreeze > 0){ S.productFreeze--; }
   else if (S.product < 100){
-    S.product = Math.min(100, S.product + (0.8 + S.insight*0.02) * S.prodMult * coord);
+    S.product = Math.min(100, S.product + (0.8 + S.insight*0.02) * S.prodMult * P().devSpeed * coord);
     if (S.product >= 100 && !S.launched){
       S.launched = true; S.leads += 30;
       addLog('🚀 プロダクト v1 をローンチ！問い合わせが入り始めた');
@@ -474,11 +555,11 @@ function tick(){
     S.quality = Math.min(95, S.quality + 0.1);
   }
   // マーケ: リード獲得
-  S.leads += (0.6 + (S.launched ? 2.2 : 0.6)) * (1 + S.insight*0.02) * coord + (S.leadBoost>0 ? 8 : 0);
+  S.leads += (0.6 + (S.launched ? 2.2 : 0.6)) * P().leadMult * (1 + S.insight*0.02) * coord + (S.leadBoost>0 ? 8 : 0);
   if (S.leadBoost>0) S.leadBoost--;
   // セールス: 成約
   const attempts = Math.min(Math.floor(S.leads), 3);
-  const rate = (S.product/100) * 0.06 * S.convMult * (S.launched ? 1 : 0.25);
+  const rate = (S.product/100) * P().conv * D().conv * S.convMult * (S.launched ? 1 : 0.25);
   let conv = 0;
   for (let i=0;i<attempts;i++) if (rnd() < rate) conv++;
   S.leads = Math.max(0, S.leads - attempts*0.7);
@@ -486,11 +567,11 @@ function tick(){
 
   // お金: 日次
   const dailyCost = (S.agents.length*1000 + 500) * 0.95; // ユキがコスト最適化
-  S.cash += S.mrr/30 - dailyCost;
+  S.cash += (S.mrr/30) * P().margin - dailyCost;
 
   // 月次決算
   if (S.day % 30 === 0){
-    let churnRate = 0.04 - (S.quality>70?0.01:0) + (S.quality<40?0.02:0) - S.churnCut;
+    let churnRate = P().churn * D().churn - (S.quality>70?0.01:0) + (S.quality<40?0.02:0) - S.churnCut;
     const churned = Math.round(S.customers * Math.max(0, churnRate));
     if (churned>0){ S.customers -= churned; recalcMrr(); }
     addLog(`🧾 月次決算（ユキ）: MRR ${YEN(S.mrr)} / 現金 ${YEN(S.cash)} / 解約 ${churned}社 / 企業価値 ${YEN(valuation())}`);
@@ -509,7 +590,7 @@ function tick(){
     S.nextEventDay = S.day + 6 + Math.floor(rnd()*8);
   }
   // 買収オファー
-  if (valuation() >= 25000000 && rnd() < 0.05 && !S.decisions.some(d=>d.type==='offer')){
+  if (valuation() >= Math.max(20000000, S.cfg.target*0.35) && rnd() < 0.05 && !S.decisions.some(d=>d.type==='offer')){
     const price = Math.round(valuation() * (0.9 + rnd()*0.5) / 1e5) * 1e5;
     pushDecision('offer', {price});
     addLog('🏦 買収オファーが届いた！（決裁ボックスへ）');
@@ -580,14 +661,18 @@ function render(){
     $('kMrr').textContent = YEN(c.mrr||0);
     $('kCust').textContent = (c.customers||0) + '社';
     $('kVal').textContent = YEN((c.mrr||0)*30 + (c.cash||0)*0.6);
+    $('kGoal').textContent = '—';
   } else if (!live){
-    $('coName').textContent = 'AIカンパニー（シミュレーション）';
+    $('coName').textContent = `${S.cfg.name}（${SCENARIOS[S.cfg.type].label}）`;
     $('kDay').textContent = 'Day ' + S.day;
     $('kCash').textContent = YEN(S.cash);
     $('kCash').className = 'v ' + (S.cash < 500000 ? 'red' : 'gold');
     $('kMrr').textContent = YEN(S.mrr);
     $('kCust').textContent = S.customers + '社';
     $('kVal').textContent = YEN(valuation());
+    const pct = valuation() / S.cfg.target * 100;
+    $('kGoal').textContent = (pct >= 100 ? '🎯 ' : '') + (pct < 10 ? pct.toFixed(1) : Math.round(pct)) + '%';
+    $('kGoal').className = 'v ' + (pct >= 100 ? 'gold' : pct >= 30 ? 'green' : '');
     $('btnPlay').textContent = S.running ? '⏸' : '▶';
     $('pauseBadge').style.display = (!S.running && S.decisions.some(d=>DECISIONS[d.type].critical)) ? 'inline-block' : 'none';
   }
@@ -717,20 +802,22 @@ function renderOverlay(){
   const hist = S.ownerHistory.slice(-8).map(h=>`<li>Day${h.day}｜${esc(h.title)} → <b>${esc(h.choice)}</b></li>`).join('') || '<li>（判断記録なし）</li>';
   if (S.over.type === 'sold'){
     const profit = S.over.price - S.invested;
+    const pct = Math.round(S.over.price / S.cfg.target * 100);
     box.className = 'box';
     box.innerHTML = `<h2>🎉 事業売却成立！</h2>
       <div class="big">${YEN(S.over.price)}</div>
-      <p>Day ${S.day} でExit達成。総投資 ${YEN(S.invested)} → 利益 <b style="color:var(--green)">${YEN(profit)}</b></p>
+      <p>${esc(S.cfg.name)}（${SCENARIOS[S.cfg.type].label}）を Day ${S.day} でExit。
+      目標 ${YEN(S.cfg.target)} に対して <b>${pct}%</b>。総投資 ${YEN(S.invested)} → 利益 <b style="color:var(--green)">${YEN(profit)}</b></p>
       <p style="text-align:left">株主の主な判断:</p><ul>${hist}</ul>
       <p>この学びを <b>sim-notes.md</b> に残して、実運用に活かそう。</p>
-      <button onclick="resetSim()">もう一度経営する</button>`;
+      <button onclick="resetSim()">前提を変えてもう一度</button>`;
   } else {
     box.className = 'box lose';
     box.innerHTML = `<h2>💧 倒産…</h2>
-      <p>Day ${S.day} で資金が尽きました。総投資 ${YEN(S.invested)}。</p>
+      <p>${esc(S.cfg.name)}（${SCENARIOS[S.cfg.type].label}）は Day ${S.day} で資金が尽きました。総投資 ${YEN(S.invested)}。</p>
       <p style="text-align:left">株主の主な判断:</p><ul>${hist}</ul>
       <p>どの判断が命取りだったか振り返って、次に活かそう。</p>
-      <button onclick="resetSim()">再挑戦する</button>`;
+      <button onclick="resetSim()">前提を変えて再挑戦</button>`;
   }
 }
 
@@ -739,11 +826,62 @@ function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'
 /* ---------------- 制御・保存 ---------------- */
 function togglePlay(){ if (S.over) return; S.running = !S.running; render(); }
 function setSpeed(s){ S.speed = s; document.querySelectorAll('.speed').forEach(b=>b.classList.toggle('on', +b.dataset.s===s)); }
-function resetSim(){ if (S && S.day>0 && !S.over && !confirm('シミュレーションを最初からやり直しますか？')) return; S = newSim(); addLog('🏢 会社設立！自己資金300万円でスタート。まずはプロダクト開発から。'); save(); render(); }
+function resetSim(){ openSetup(); }
 function save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
 function load(){ try{ const j = localStorage.getItem(SAVE_KEY); if (j){ S = JSON.parse(j);
   const rei = S.agents.find(a=>a.id==='rei'); if (rei && rei.role !== 'CEO') rei.role = 'CEO'; // 旧セーブ移行
+  if (!S.cfg) S.cfg = defaultCfg();                                                            // 旧セーブ移行
   return true; } }catch(e){} return false; }
+
+/* ---------------- 会社設立（前提条件）画面 ---------------- */
+function openSetup(){
+  const sel = $('cfgType');
+  if (!sel.options.length){
+    for (const k in SCENARIOS){ const o = document.createElement('option'); o.value = k; o.textContent = SCENARIOS[k].label; sel.appendChild(o); }
+  }
+  if (S && S.cfg){
+    $('cfgName').value = S.cfg.name; sel.value = S.cfg.type; $('cfgPrice').value = S.cfg.price;
+    $('cfgCapital').value = S.cfg.capital; $('cfgDiff').value = S.cfg.diff; $('cfgTarget').value = S.cfg.target;
+  }
+  setupTypeChanged(false);
+  renderSetupHist();
+  $('setup').style.display = 'flex';
+}
+function closeSetup(){
+  $('setup').style.display = 'none';
+  if (S && !S.over && !S.decisions.some(d=>DECISIONS[d.type].critical)) S.running = true;
+  render();
+}
+function setupTypeChanged(resetPrice){
+  const s = SCENARIOS[$('cfgType').value];
+  if (resetPrice !== false) $('cfgPrice').value = s.price;
+  $('cfgDesc').textContent = s.desc + `（粗利${Math.round(s.margin*100)}% / 評価倍率 月商×${s.valMult}）`;
+}
+function startSim(){
+  const type = $('cfgType').value;
+  const cfg = {
+    name: $('cfgName').value.trim() || 'AIカンパニー',
+    type,
+    price: Math.max(100, +$('cfgPrice').value || SCENARIOS[type].price),
+    capital: +$('cfgCapital').value,
+    diff: $('cfgDiff').value,
+    target: +$('cfgTarget').value,
+  };
+  S = newSim(cfg);
+  addLog(`🏢 ${cfg.name} 設立！ ${SCENARIOS[type].label}・自己資金${YEN(cfg.capital)}・Exit目標 ${YEN(cfg.target)}`);
+  closeSetup(); save(); render();
+}
+function renderSetupHist(){
+  let l = [];
+  try{ l = JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){}
+  $('setupHist').innerHTML = l.length
+    ? '<b>これまでの経営記録</b><br>' + l.map(h=>{
+        const t = (SCENARIOS[h.type]||{}).label || h.type;
+        const r = h.outcome==='sold' ? `売却 ${YEN(h.price)}（目標比${Math.round(h.price/(h.target||1)*100)}%）` : '倒産';
+        return `${h.date}｜${esc(h.name)}［${t}］Day${h.days} → ${r}`;
+      }).join('<br>')
+    : '';
+}
 
 function setMode(m){
   mode = m;
@@ -814,7 +952,7 @@ function loop(t){
   requestAnimationFrame(loop);
 }
 
-if (!load()) { S = newSim(); addLog('🏢 会社設立！自己資金300万円でスタート。まずはプロダクト開発から。'); }
+if (!load()) { S = newSim(); S.running = false; openSetup(); }
 fillGhForm();
 window.addEventListener('resize', render);
 render();
