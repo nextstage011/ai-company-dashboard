@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏢 AIカンパニー・オフィス</title>
+<style>
+  :root{
+    --bg:#0f1220; --panel:#171b2e; --panel2:#1e2340; --line:#2a3052;
+    --text:#e6e9f5; --dim:#8b93b8; --gold:#fbbf24; --green:#4ade80;
+    --red:#f87171; --blue:#60a5fa; --purple:#c084fc;
+    --floor1:#3a3350; --floor2:#443c5e; --wall:#262040;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:"Hiragino Sans","Yu Gothic",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ===== ヘッダー ===== */
+  header{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  header h1{font-size:16px;white-space:nowrap}
+  .modes{display:flex;background:var(--bg);border-radius:8px;padding:3px;gap:3px}
+  .modes button{border:none;background:transparent;color:var(--dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+  .modes button.on{background:var(--panel2);color:var(--text)}
+  .kpis{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+  .kpi{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:4px 10px;text-align:center;min-width:78px}
+  .kpi .l{font-size:10px;color:var(--dim)}
+  .kpi .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .v.gold{color:var(--gold)} .kpi .v.green{color:var(--green)} .kpi .v.red{color:var(--red)} .kpi .v.blue{color:var(--blue)} .kpi .v.purple{color:var(--purple)}
+  .ctrl{display:flex;gap:6px;align-items:center}
+  .ctrl button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:8px;padding:5px 11px;cursor:pointer;font-size:13px}
+  .ctrl button.speed.on{background:var(--gold);color:#000;font-weight:700}
+  .ctrl .reset{color:var(--dim);font-size:11px}
+  #pauseBadge{display:none;background:var(--gold);color:#000;font-size:11px;font-weight:700;border-radius:6px;padding:4px 8px;animation:blink 1.2s infinite}
+  @keyframes blink{50%{opacity:.5}}
+
+  /* ===== レイアウト ===== */
+  main{flex:1;display:flex;min-height:0}
+  #officeWrap{flex:1.5;position:relative;overflow:auto;background:var(--wall)}
+  aside{width:370px;min-width:300px;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;overflow-y:auto}
+  @media (max-width:900px){
+    main{flex-direction:column}
+    #officeWrap{flex:none;height:58vh}
+    aside{width:100%;min-width:0;border-left:none;border-top:1px solid var(--line);flex:1}
+  }
+
+  /* ===== オフィス（ゲーム画面） ===== */
+  #office{position:relative;width:100%;min-height:100%;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 46px, rgba(0,0,0,.14) 46px 48px),
+      repeating-linear-gradient(90deg, transparent 0 46px, rgba(0,0,0,.14) 46px 48px),
+      linear-gradient(var(--floor1),var(--floor2));
+  }
+  #office::before{ /* 壁と窓 */
+    content:"";position:absolute;top:0;left:0;right:0;height:64px;background:var(--wall);
+    border-bottom:4px solid #191430;
+  }
+  .window{position:absolute;top:8px;width:110px;height:44px;border-radius:6px;border:3px solid #191430;
+    background:linear-gradient(#1c2c54,#2c4a7c);overflow:hidden}
+  .window::after{content:"🌙";position:absolute;right:8px;top:4px;font-size:14px;opacity:.9}
+  .deco{position:absolute;font-size:26px;filter:drop-shadow(0 3px 2px rgba(0,0,0,.4))}
+
+  .desk{position:absolute;width:150px;text-align:center;transition:left .5s,top .5s}
+  .desk .table{margin:0 auto;width:120px;height:46px;background:linear-gradient(#8a6a4a,#6e5238);border-radius:8px;
+    border:2px solid #4d3a26;box-shadow:0 5px 0 #3d2e1e;position:relative}
+  .desk .table::after{content:"🖥️";position:absolute;left:50%;transform:translateX(-50%);top:6px;font-size:20px}
+  .desk.owner .table{background:linear-gradient(#a98d5f,#8a7040);border-color:#5c4a28;width:140px}
+  .desk .chair{font-size:34px;line-height:1;position:relative;display:inline-block;margin-top:-4px}
+  .desk .chair .dot{position:absolute;right:-2px;bottom:2px;width:11px;height:11px;border-radius:50%;border:2px solid #10132200}
+  .dot.working{background:var(--green)} .dot.idle{background:#94a3b8} .dot.blocked{background:var(--red)} .dot.waiting_owner{background:var(--gold)}
+  .desk.working .chair{animation:bob 1s infinite}
+  @keyframes bob{50%{transform:translateY(-3px)}}
+  .desk .name{font-size:11px;font-weight:700;background:rgba(0,0,0,.45);border-radius:5px;display:inline-block;padding:2px 8px;margin-top:3px}
+  .desk .role{font-size:9px;color:#cfd5ef;opacity:.85}
+  .bubble{position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);
+    background:#fff;color:#1a1d33;font-size:10px;line-height:1.35;border-radius:9px;padding:5px 9px;
+    max-width:150px;min-width:60px;box-shadow:0 3px 8px rgba(0,0,0,.35);z-index:5}
+  .bubble::after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
+    border:6px solid transparent;border-top-color:#fff}
+  .bubble.zzz{background:#dfe3f2;color:#7b83a8;font-style:italic}
+
+  /* ===== サイドバー ===== */
+  section{padding:12px 14px;border-bottom:1px solid var(--line)}
+  section h2{font-size:12px;color:var(--dim);letter-spacing:.08em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  section h2 .count{background:var(--gold);color:#000;border-radius:10px;font-size:10px;padding:1px 7px}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+  .card.decision{border-color:var(--gold)}
+  .card .t{font-size:13px;font-weight:700;margin-bottom:4px}
+  .card .d{font-size:11px;color:var(--dim);line-height:1.6;margin-bottom:8px}
+  .card .opts{display:flex;gap:6px;flex-wrap:wrap}
+  .card .opts button{flex:1;min-width:100px;border:1px solid var(--line);background:var(--bg);color:var(--text);
+    border-radius:8px;padding:7px 8px;cursor:pointer;font-size:12px;font-weight:600}
+  .card .opts button:hover{border-color:var(--gold);background:#242b4d}
+  .card .opts .hint{display:block;font-size:9px;color:var(--dim);font-weight:400;margin-top:2px}
+  .board{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:10.5px;line-height:1.6}
+  .board .rec{color:var(--gold);font-weight:700;margin-bottom:5px}
+  .board .md b{font-size:10px}
+  .board ul{list-style:none;margin:1px 0 5px;padding:0}
+  .board ul li{padding-left:12px;position:relative;color:#c3c9e4}
+  .board ul.plus li::before{content:"＋";position:absolute;left:0;color:var(--green)}
+  .board ul.minus li::before{content:"−";position:absolute;left:0;color:var(--red)}
+  .board .voices{border-top:1px dashed #232948;padding-top:5px;color:var(--dim);font-size:10px}
+  .empty{font-size:11px;color:var(--dim);padding:4px 0}
+  .member{display:flex;align-items:center;gap:9px;padding:6px 4px;border-bottom:1px dashed #232948}
+  .member:last-child{border-bottom:none}
+  .member .av{font-size:22px}
+  .member .info{flex:1;min-width:0}
+  .member .nm{font-size:12px;font-weight:700}
+  .member .nm span{font-weight:400;color:var(--dim);font-size:10px;margin-left:5px}
+  .member .tk{font-size:10px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .member .st{font-size:9px;border-radius:5px;padding:2px 6px;white-space:nowrap}
+  .st.working{background:#173626;color:var(--green)} .st.idle{background:#252b45;color:#94a3b8}
+  .st.blocked{background:#3a1d1d;color:var(--red)} .st.waiting_owner{background:#3a3012;color:var(--gold)}
+  #log{font-size:11px;line-height:1.8;color:#c3c9e4}
+  #log .day{color:var(--dim);margin-right:6px;font-variant-numeric:tabular-nums}
+  #liveNotice{display:none;font-size:11px;color:var(--gold);background:#2c2410;border:1px solid #574a1a;border-radius:8px;padding:8px 10px;margin:12px 14px 0}
+  #liveNotice.ok{color:var(--green);background:#12271b;border-color:#1e4a30}
+  details.ghset summary{cursor:pointer;font-size:12px;color:var(--dim);letter-spacing:.08em}
+  .ghform{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+  .ghform input{background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--text);padding:7px 9px;font-size:12px}
+  .ghform .row{display:flex;gap:6px}
+  .ghform button{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px}
+  .ghform .hint{font-size:10px;color:var(--dim);line-height:1.6}
+
+  /* ===== オーバーレイ ===== */
+  #overlay{display:none;position:fixed;inset:0;background:rgba(8,10,20,.85);z-index:50;align-items:center;justify-content:center}
+  #overlay .box{background:var(--panel);border:2px solid var(--gold);border-radius:16px;padding:32px 36px;max-width:520px;text-align:center}
+  #overlay .box.lose{border-color:var(--red)}
+  #overlay h2{font-size:24px;margin-bottom:10px}
+  #overlay p{font-size:13px;color:var(--dim);line-height:1.9;margin-bottom:8px}
+  #overlay .big{font-size:30px;color:var(--gold);font-weight:800;margin:10px 0}
+  #overlay ul{text-align:left;font-size:12px;color:#c3c9e4;line-height:1.9;margin:10px 0 16px;list-style:none;max-height:180px;overflow-y:auto}
+  #overlay button{border:none;background:var(--gold);color:#000;font-weight:700;border-radius:10px;padding:10px 26px;cursor:pointer;font-size:14px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏢 <span id="coName">AIカンパニー</span></h1>
+  <div class="modes">
+    <button id="mSim" class="on" onclick="setMode('sim')">🎮 シミュレーション</button>
+    <button id="mLive" onclick="setMode('live')">🔴 実運用</button>
+  </div>
+  <span id="pauseBadge">⏸ 株主決裁待ち</span>
+  <div class="kpis">
+    <div class="kpi"><div class="l">経過</div><div class="v" id="kDay">Day 0</div></div>
+    <div class="kpi"><div class="l">現金</div><div class="v gold" id="kCash">—</div></div>
+    <div class="kpi"><div class="l">MRR</div><div class="v green" id="kMrr">—</div></div>
+    <div class="kpi"><div class="l">顧客</div><div class="v blue" id="kCust">—</div></div>
+    <div class="kpi"><div class="l">企業価値</div><div class="v purple" id="kVal">—</div></div>
+  </div>
+  <div class="ctrl" id="simCtrl">
+    <button id="btnPlay" onclick="togglePlay()">▶</button>
+    <button class="speed on" data-s="1" onclick="setSpeed(1)">×1</button>
+    <button class="speed" data-s="5" onclick="setSpeed(5)">×5</button>
+    <button class="speed" data-s="20" onclick="setSpeed(20)">×20</button>
+    <button class="reset" onclick="resetSim()">リセット</button>
+  </div>
+</header>
+
+<main>
+  <div id="officeWrap"><div id="office"></div></div>
+  <aside>
+    <div id="liveNotice">実運用モードは <code>company/serve.sh</code> 経由で開くと state/ を自動反映します。</div>
+    <section>
+      <h2>👑 株主決裁ボックス（青野さんの専権）<span class="count" id="decCount" style="display:none">0</span></h2>
+      <div id="decisions"><div class="empty">いま判断待ちの案件はありません。</div></div>
+    </section>
+    <section>
+      <h2>👥 AI社員</h2>
+      <div id="members"></div>
+    </section>
+    <section>
+      <h2>📜 ログ</h2>
+      <div id="log"></div>
+    </section>
+    <section>
+      <details class="ghset">
+        <summary>☁️ リモート設定（GitHub経由で state を読む）</summary>
+        <div class="ghform">
+          <input id="ghRepo" placeholder="リポジトリ（例: nextstage011/ai-company-state）">
+          <input id="ghBranch" placeholder="ブランチ（空欄なら main）">
+          <input id="ghToken" type="password" placeholder="読み取り専用トークン（Fine-grained PAT）">
+          <div class="row">
+            <button onclick="saveGh()">保存</button>
+            <button onclick="clearGh()">削除</button>
+          </div>
+          <div class="hint" id="ghMsg"></div>
+          <div class="hint">出先からの閲覧用。ローカルの state が読めない時だけ GitHub API を使います。
+          設定は<b>この端末のブラウザ内にだけ</b>保存されます（他人と共有しないこと）。</div>
+        </div>
+      </details>
+    </section>
+  </aside>
+</main>
+
+<div id="overlay"><div class="box" id="overlayBox"></div></div>
+
+<script>
+/* ================================================================
+   AIカンパニー・オフィス
+   - sim  : ブラウザ内シミュレーション（localStorage保存）
+   - live : ../state/company.json ../state/agents.json を5秒ごと反映
+   ================================================================ */
+'use strict';
+
+const YEN = n => {
+  const a = Math.abs(n);
+  if (a >= 1e8) return (n/1e8).toFixed(2) + '億円';
+  if (a >= 1e4) return Math.round(n/1e4).toLocaleString() + '万円';
+  return Math.round(n).toLocaleString() + '円';
+};
+const rnd = Math.random;
+const $ = id => document.getElementById(id);
+
+/* ---------------- 社員マスタ ---------------- */
+const BASE_AGENTS = [
+  {id:'rei',  name:'レイ',  role:'CEO',            avatar:'🦊'},
+  {id:'haru', name:'ハル',  role:'プロダクト',      avatar:'🐻'},
+  {id:'mina', name:'ミナ',  role:'マーケティング',  avatar:'🐰'},
+  {id:'kent', name:'ケント', role:'セールス',        avatar:'🐧'},
+  {id:'yuki', name:'ユキ',  role:'財務・経理',      avatar:'🐱'},
+  {id:'sora', name:'ソラ',  role:'リサーチ',        avatar:'🦉'},
+];
+const CANDIDATES = {
+  momo: {id:'momo', name:'モモ', role:'カスタマーサクセス', avatar:'🐹', pitch:'解約率を大きく下げます'},
+  riku: {id:'riku', name:'リク', role:'エンジニア2号',     avatar:'🐺', pitch:'開発速度が約1.7倍に'},
+  hana: {id:'hana', name:'ハナ', role:'デザイナー',        avatar:'🦋', pitch:'品質と成約率が上がります'},
+};
+const ACTS = {
+  rei:['事業計画を見直し中','KPIをレビュー中','みんなに采配中','競合の動きをチェック中','株主向け提案を準備中'],
+  haru:['機能を実装中','バグを修正中','リリース準備中','コードレビュー中','設計を検討中'],
+  mina:['記事を執筆中','SNSを運用中','広告文を推敲中','LPを改善中','キャンペーン企画中'],
+  kent:['商談中','見込み客にメール中','デモを準備中','フォローアップ中','提案書を作成中'],
+  yuki:['帳簿を整理中','キャッシュフロー確認中','月次レポート作成中','コスト見直し中'],
+  sora:['市場調査中','競合を分析中','ユーザーの声を分析中','トレンド調査中'],
+  momo:['顧客をサポート中','オンボーディング対応中','解約理由をヒアリング中'],
+  riku:['機能を実装中','インフラ改善中','テストを書いている'],
+  hana:['UIをデザイン中','LPをリデザイン中','ブランド調整中'],
+};
+
+/* ---------------- シミュレーション状態 ---------------- */
+const SAVE_KEY = 'ai-company-sim-v1';
+let S = null;          // sim state
+let mode = 'sim';
+let liveData = null;   // {company, agents}
+let liveTimer = null;
+let acc = 0, lastT = 0;
+
+function newSim(){
+  return {
+    day:0, cash:3000000, invested:3000000,
+    mrr:0, customers:0, leads:0,
+    product:0, quality:50, insight:0, price:9800,
+    convMult:1, churnCut:0, leadBoost:0, productFreeze:0, prodMult:1,
+    launched:false, extraFunds:0, lastPriceDay:-999, pivoted:false,
+    nextEventDay:8, running:true, speed:1, over:null,
+    agents: BASE_AGENTS.map(a => ({...a, skill:1, status:'working', task:'', taskUntil:0})),
+    decisions:[], log:[], ownerHistory:[],
+  };
+}
+
+/* ---------------- 株主決裁（イベント定義） ---------------- */
+let uid = 1;
+const DECISIONS = {
+  ad: {
+    icon:'📣', critical:false,
+    title: () => '広告投資 30万円',
+    desc:  () => 'ミナ発案の広告投資。10万円以上の支出のため役員会から株主決裁に上申します。',
+    board: () => ({
+      rec: S.launched ? '賛成多数 → 承認を推奨' : '意見が割れた（ローンチ前のため）',
+      merits: ['成功すれば約10日間リード獲得が大幅増（成功率7割と試算）', S.launched ? 'ローンチ済みなので刈り取りの受け皿がある' : '早期に市場の反応データが取れる'],
+      demerits: ['3割の確率で費用対効果が合わない', '現金が30万円減る（残高 '+YEN(S.cash)+'）'],
+      voices: [
+        {av:'🐰', say:'クリエイティブは準備済み。今が打ち時'},
+        {av:'🐱', say: S.cash < 800000 ? '現金が心もとない。見送りも一案' : '残高的には許容範囲'},
+      ],
+    }),
+    options: () => [
+      {label:'承認する（−30万円）', hint:'成功70%: リード大幅増', apply(){
+        S.cash -= 300000;
+        if (rnd() < 0.7){ S.leadBoost = 10; addLog('📣 広告がヒット！問い合わせが殺到している'); }
+        else { S.leads += 15; addLog('📣 広告は不発…リードは少しだけ増えた'); }
+      }},
+      {label:'見送る', hint:'現金温存', apply(){ addLog('広告投資は見送り。ミナはオーガニック集客を継続。'); }},
+    ],
+  },
+  contract: {
+    icon:'💼', critical:false,
+    title: () => '受託案件 50万円の受注可否',
+    desc:  () => 'ケント経由の受託開発の打診。対外契約のため役員会から株主決裁に上申します。',
+    board: () => ({
+      rec: S.product < 100 ? '意見が割れた → 株主判断を仰ぐ' : '賛成多数 → 受注を推奨',
+      merits: ['即金50万円でランウェイが約1.5ヶ月延びる', '外部実績になる'],
+      demerits: ['ハルが2週間専念し自社プロダクトが停止', '受託は売却価値（企業価値）に乗りにくい'],
+      voices: [
+        {av:'🐧', say:'関係構築的にも受けたい案件'},
+        {av:'🐻', say: S.product < 100 ? '開発の勢いが落ちるのが痛い' : 'v1完成済みなので影響は限定的'},
+      ],
+    }),
+    options: () => [
+      {label:'受ける（＋50万円）', hint:'プロダクト2週間停止', apply(){
+        S.cash += 500000; S.productFreeze = 14;
+        addLog('💼 受託案件を受注。ハルは2週間そちらに専念。');
+      }},
+      {label:'断る', hint:'自社に集中', apply(){ addLog('受託は断り、自社プロダクトに集中。'); }},
+    ],
+  },
+  hire: {
+    icon:'🤝', critical:false,
+    title: p => `採用：${CANDIDATES[p.cand].name} ${CANDIDATES[p.cand].avatar}（${CANDIDATES[p.cand].role}）`,
+    desc:  p => `採用は株主専権のため、役員会の検討結果をつけて上申します。${CANDIDATES[p.cand].pitch}。`,
+    board: p => ({
+      rec: '全会一致 → 採用を推奨',
+      merits: [CANDIDATES[p.cand].pitch, '今のボトルネックを解消する役割と役員会で確認済み'],
+      demerits: ['ランニングコストが月3万円増える', '役割が増える分、統率コストが上がる'],
+      voices: [
+        {av:'🦊', say:'組織のボトルネックはここ。早く埋めたい'},
+        {av:'🐱', say:'月3万円は現MRRでも回収可能と試算'},
+      ],
+    }),
+    options: p => [
+      {label:'採用する', hint:'月コスト+3万円', apply(){
+        const c = CANDIDATES[p.cand];
+        S.agents.push({...c, skill:1, status:'working', task:'', taskUntil:0});
+        if (p.cand==='momo') S.churnCut += 0.02;
+        if (p.cand==='riku') S.prodMult *= 1.7;
+        if (p.cand==='hana'){ S.convMult *= 1.15; S.quality = Math.min(95, S.quality+12); }
+        addLog(`🤝 ${c.name}${c.avatar} が入社！（${c.role}）`);
+      }},
+      {label:'見送る', hint:'', apply(){ addLog(`${CANDIDATES[p.cand].name}の採用は見送り。`); }},
+    ],
+  },
+  price: {
+    icon:'💴', critical:false,
+    title: () => '価格改定の判断',
+    desc:  () => `現在 月額${S.price.toLocaleString()}円。価格は株主専権のため、役員会の分析をつけて上申します。`,
+    board: () => ({
+      rec: '役員会内で意見が割れた → 株主判断を仰ぐ',
+      merits: ['値上げ: 顧客数そのままで売上と企業価値が上がる', '値下げ: 成約率が上がり顧客数を稼げる'],
+      demerits: ['値上げ: 解約リスクと成約率低下', '値下げ: 単価が下がり売上回復に顧客数が必要'],
+      voices: [
+        {av:'🐱', say:'財務的には値上げ。MRRの伸びが企業価値に直結'},
+        {av:'🐧', say:'現場感覚では値下げの方が成約は伸びる'},
+      ],
+    }),
+    options: () => [
+      {label:'値上げ ¥14,800', hint:'単価↑ 成約↓ 解約↑', apply(){
+        S.price = 14800; S.convMult *= 0.8; S.churnCut -= 0.01;
+        addLog('💴 価格を月額14,800円に改定。'); recalcMrr();
+      }},
+      {label:'値下げ ¥4,980', hint:'成約↑ 単価↓', apply(){
+        S.price = 4980; S.convMult *= 1.4;
+        addLog('💴 価格を月額4,980円に改定。'); recalcMrr();
+      }},
+      {label:'据え置き', hint:'', apply(){ addLog('価格は据え置き。'); }},
+    ],
+  },
+  pivot: {
+    icon:'🔄', critical:true,
+    title: () => '【重要】方向転換（ピボット）の判断',
+    desc:  () => '会社の方向性は株主専権。役員会で徹底討議しましたが結論が出ず、判断材料を整理して上申します。',
+    board: () => ({
+      rec: '役員会では結論が出ず → 方向性の判断は株主専権',
+      merits: ['ソラの調査では隣接市場は約2倍の規模', '今の顧客数なら傷が浅いうちに動ける'],
+      demerits: ['プロダクトの作り直しが半分発生', '現路線で積んだ知見の一部が無駄になる'],
+      voices: [
+        {av:'🦉', say:'データ上、現市場の伸びしろは限定的'},
+        {av:'🐻', say:'作り直しの半年は覚悟してほしい'},
+        {av:'🦊', say:'どちらでも勝ち筋は描ける。決めるのは株主'},
+      ],
+    }),
+    options: () => [
+      {label:'ピボットする', hint:'product半減・市場2倍', apply(){
+        S.product *= 0.5; S.convMult *= 1.8; S.insight += 10; S.pivoted = true;
+        addLog('🔄 ピボットを決断。新市場に向けて作り直し開始！');
+      }},
+      {label:'現路線を貫く', hint:'', apply(){ S.pivoted = true; addLog('現路線を継続。深掘りで勝負する。'); }},
+    ],
+  },
+  offer: {
+    icon:'🏦', critical:true,
+    title: p => `【重要】買収オファー：${YEN(p.price)}`,
+    desc:  p => `事業会社から ${YEN(p.price)} での買収オファー。売却は株主専権のため、役員会の分析をつけて上申します。`,
+    board: p => ({
+      rec: p.price >= valuation() ? '財務的には妥当以上のオファー（判断は株主専権）' : '現企業価値よりやや低めのオファー（判断は株主専権）',
+      merits: ['売却すればExit達成、利益 '+YEN(p.price - S.invested)+' が確定', '市場環境が変わる前に確実に回収できる'],
+      demerits: ['成長を続ければより大きなオファーの可能性', '売却後はこの事業の将来価値を放棄する'],
+      voices: [
+        {av:'🐱', say:'現企業価値 '+YEN(valuation())+' に対する倍率で見て判断を'},
+        {av:'🦊', say:'続けるなら次のオファーまで戦い抜く覚悟が要る'},
+      ],
+    }),
+    options: p => [
+      {label:'売却する 🎉', hint:'Exit達成！', apply(){ S.over = {type:'sold', price:p.price}; }},
+      {label:'断って続ける', hint:'さらに成長を狙う', apply(){ addLog('🏦 オファーを辞退。さらなる成長を目指す。'); }},
+    ],
+  },
+  crisis: {
+    icon:'🚨', critical:true,
+    title: () => '【緊急】資金ショート',
+    desc:  () => '現金が尽きました。増資は株主専権です。役員会の緊急整理を添えます。',
+    board: () => ({
+      rec: '緊急案件 → 資金の最終決裁は株主専権',
+      merits: ['追加出資すれば事業は継続、これまでの資産（プロダクト・顧客）を活かせる'],
+      demerits: ['投下資金の総額が増え、Exit時の必要売却額が上がる', '畳めば損失はここで確定するが追加リスクはゼロ'],
+      voices: [
+        {av:'🐱', say:'月次の燃焼額は約'+YEN((S.agents.length*1000+500)*30*0.95)+'。出資分の持ち時間は計算済み'},
+        {av:'🦊', say:'続けるなら支出構造の見直しを役員会で即実行する'},
+      ],
+    }),
+    options: () => [
+      {label:'追加出資 ＋200万円', hint:'自己資金を投入', apply(){
+        S.cash += 2000000; S.invested += 2000000; S.extraFunds++;
+        addLog('🚨 株主が200万円を追加出資。経営継続。');
+      }},
+      {label:'ここで畳む', hint:'倒産（ゲーム終了）', apply(){ S.over = {type:'bankrupt'}; }},
+    ],
+  },
+};
+
+/* 役員会の権限内で完結する小案件（1件10万円未満・予算内） */
+const BOARD_MATTERS = [
+  {text:'分析ツール（月3,000円）の導入を承認', apply(){ S.cash -= 3000; S.insight += 1; }},
+  {text:'LPのA/Bテストの実施を決定', apply(){ S.convMult *= 1.02; }},
+  {text:'週次リリース体制への変更を決定', apply(){ S.prodMult *= 1.03; }},
+  {text:'サポートのテンプレ整備を決定', apply(){ S.quality = Math.min(95, S.quality + 2); }},
+  {text:'使っていないツールを解約しコスト削減', apply(){ S.cash += 15000; }},
+  {text:'今週の開発優先度を顧客要望順に組み替え', apply(){ S.quality = Math.min(95, S.quality + 1); }},
+  {text:'SNS投稿の頻度を週3→週5に変更', apply(){ S.leads += 3; }},
+];
+
+function pushDecision(type, payload){
+  if (S.decisions.some(d => d.type === type)) return;
+  S.decisions.push({uid:uid++, type, payload: payload||{}, day:S.day});
+  if (DECISIONS[type].critical) S.running = false;
+  const agentByType = {ad:'mina', contract:'kent', hire:'rei', price:'yuki', pivot:'rei'};
+  const owner = agentByType[type];
+  if (owner){ const a = S.agents.find(x=>x.id===owner); if (a) a.status='waiting_owner'; }
+}
+
+function decide(du, idx){
+  const d = S.decisions.find(x=>x.uid===du); if (!d) return;
+  const def = DECISIONS[d.type];
+  const opt = def.options(d.payload)[idx];
+  S.decisions = S.decisions.filter(x=>x.uid!==du);
+  S.ownerHistory.push({day:S.day, title:def.title(d.payload), choice:opt.label});
+  S.agents.forEach(a=>{ if(a.status==='waiting_owner') a.status='working'; });
+  opt.apply();
+  if (!S.decisions.some(x=>DECISIONS[x.type].critical) && !S.over) S.running = true;
+  render(); save();
+}
+
+/* ---------------- シミュレーション・1日 ---------------- */
+function addLog(text){ S.log.unshift({day:S.day, text}); if (S.log.length>120) S.log.pop(); }
+function recalcMrr(){ S.mrr = S.customers * S.price; }
+function valuation(){ return Math.max(0, S.mrr*30 + S.cash*0.6); }
+function has(id){ return S.agents.some(a=>a.id===id); }
+
+function tick(){
+  if (S.over) return;
+  S.day++;
+  const coord = 1.05; // レイの采配ボーナス
+
+  // 各社員の仕事
+  S.insight += 0.15;
+  if (S.productFreeze > 0){ S.productFreeze--; }
+  else if (S.product < 100){
+    S.product = Math.min(100, S.product + (0.8 + S.insight*0.02) * S.prodMult * coord);
+    if (S.product >= 100 && !S.launched){
+      S.launched = true; S.leads += 30;
+      addLog('🚀 プロダクト v1 をローンチ！問い合わせが入り始めた');
+    }
+  } else {
+    S.quality = Math.min(95, S.quality + 0.1);
+  }
+  // マーケ: リード獲得
+  S.leads += (0.6 + (S.launched ? 2.2 : 0.6)) * (1 + S.insight*0.02) * coord + (S.leadBoost>0 ? 8 : 0);
+  if (S.leadBoost>0) S.leadBoost--;
+  // セールス: 成約
+  const attempts = Math.min(Math.floor(S.leads), 3);
+  const rate = (S.product/100) * 0.06 * S.convMult * (S.launched ? 1 : 0.25);
+  let conv = 0;
+  for (let i=0;i<attempts;i++) if (rnd() < rate) conv++;
+  S.leads = Math.max(0, S.leads - attempts*0.7);
+  if (conv > 0){ S.customers += conv; recalcMrr(); if (S.customers<=3 || rnd()<0.3) addLog(`🎉 新規顧客 +${conv}（計${S.customers}社）`); }
+
+  // お金: 日次
+  const dailyCost = (S.agents.length*1000 + 500) * 0.95; // ユキがコスト最適化
+  S.cash += S.mrr/30 - dailyCost;
+
+  // 月次決算
+  if (S.day % 30 === 0){
+    let churnRate = 0.04 - (S.quality>70?0.01:0) + (S.quality<40?0.02:0) - S.churnCut;
+    const churned = Math.round(S.customers * Math.max(0, churnRate));
+    if (churned>0){ S.customers -= churned; recalcMrr(); }
+    addLog(`🧾 月次決算（ユキ）: MRR ${YEN(S.mrr)} / 現金 ${YEN(S.cash)} / 解約 ${churned}社 / 企業価値 ${YEN(valuation())}`);
+  }
+
+  // 役員会の権限内案件（株主に来ない・自動処理）
+  if (S.day % 9 === 4 && rnd() < 0.6){
+    const m = BOARD_MATTERS[Math.floor(rnd()*BOARD_MATTERS.length)];
+    m.apply();
+    addLog(`🏛 役員会決裁: ${m.text}（権限規程内・株主確認不要）`);
+  }
+
+  // イベント発生
+  if (S.day >= S.nextEventDay && S.decisions.length < 2){
+    spawnEvent();
+    S.nextEventDay = S.day + 6 + Math.floor(rnd()*8);
+  }
+  // 買収オファー
+  if (valuation() >= 25000000 && rnd() < 0.05 && !S.decisions.some(d=>d.type==='offer')){
+    const price = Math.round(valuation() * (0.9 + rnd()*0.5) / 1e5) * 1e5;
+    pushDecision('offer', {price});
+    addLog('🏦 買収オファーが届いた！（決裁ボックスへ）');
+  }
+  // 資金ショート
+  if (S.cash < 0 && !S.decisions.some(d=>d.type==='crisis')){
+    pushDecision('crisis'); addLog('🚨 現金が尽きた！株主の判断待ち');
+  }
+
+  // 社員の吹き出し更新
+  S.agents.forEach(a=>{
+    if (S.day >= a.taskUntil && a.status==='working'){
+      const pool = ACTS[a.id] || ['作業中'];
+      a.task = pool[Math.floor(rnd()*pool.length)];
+      a.taskUntil = S.day + 2 + Math.floor(rnd()*3);
+    }
+    if (a.id==='haru' && S.productFreeze>0) a.task = '受託案件の対応中';
+  });
+}
+
+function spawnEvent(){
+  const pool = [];
+  if (S.cash >= 400000) pool.push(['ad', {}]);
+  if (S.day > 20) pool.push(['contract', {}]);
+  if (S.day > 25 && S.cash >= 500000){
+    const cands = Object.keys(CANDIDATES).filter(c=>!has(c));
+    if (cands.length) pool.push(['hire', {cand: cands[Math.floor(rnd()*cands.length)]}]);
+  }
+  if (S.launched && S.customers >= 5 && S.day - S.lastPriceDay > 60) pool.push(['price', {}]);
+  if (S.day > 60 && S.customers < 8 && !S.pivoted) pool.push(['pivot', {}]);
+  if (!pool.length) return;
+  const [type, payload] = pool[Math.floor(rnd()*pool.length)];
+  if (type==='price') S.lastPriceDay = S.day;
+  pushDecision(type, payload);
+  addLog(`🏛 役員会で議論 → 👑 決裁ボックスへ上申: ${DECISIONS[type].title(payload)}`);
+}
+
+/* ---------------- 描画 ---------------- */
+const STATUS_JA = {working:'稼働中', idle:'待機', blocked:'ブロック', waiting_owner:'決裁待ち'};
+
+function agentsToRender(){
+  if (mode==='live'){
+    if (!liveData) return [];
+    return liveData.agents.agents.map(a=>({...a, task:a.current_task || '', status:a.status||'idle'}));
+  }
+  return S.agents;
+}
+
+function render(){
+  const live = mode==='live';
+  $('simCtrl').style.display = live ? 'none' : 'flex';
+  const notice = $('liveNotice');
+  notice.style.display = live ? 'block' : 'none';
+  if (live){
+    if (liveSource === 'local'){ notice.className = 'ok'; notice.textContent = '🟢 このMacの state を直読み中（5秒ごと更新）'; }
+    else if (liveSource === 'github'){ notice.className = 'ok'; notice.textContent = '☁️ GitHub経由で表示中（反映まで最大1〜2分の遅れ）'; }
+    else if (ghConf()){ notice.className = ''; notice.textContent = '⚠️ 接続できません。リポジトリ名・トークン・ネット接続を確認してください。'; }
+    else { notice.className = ''; notice.textContent = 'このMacでは serve.sh 経由で開いてください。出先から見る場合は下の「☁️ リモート設定」にリポジトリとトークンを入れてください。'; }
+  }
+
+  // KPI
+  if (live && liveData){
+    const c = liveData.company;
+    const days = Math.max(0, Math.round((Date.now() - new Date(c.founded)) / 864e5));
+    $('coName').textContent = c.company_name || 'AIカンパニー';
+    $('kDay').textContent = 'Day ' + days;
+    $('kCash').textContent = YEN(c.cash||0);
+    $('kMrr').textContent = YEN(c.mrr||0);
+    $('kCust').textContent = (c.customers||0) + '社';
+    $('kVal').textContent = YEN((c.mrr||0)*30 + (c.cash||0)*0.6);
+  } else if (!live){
+    $('coName').textContent = 'AIカンパニー（シミュレーション）';
+    $('kDay').textContent = 'Day ' + S.day;
+    $('kCash').textContent = YEN(S.cash);
+    $('kCash').className = 'v ' + (S.cash < 500000 ? 'red' : 'gold');
+    $('kMrr').textContent = YEN(S.mrr);
+    $('kCust').textContent = S.customers + '社';
+    $('kVal').textContent = YEN(valuation());
+    $('btnPlay').textContent = S.running ? '⏸' : '▶';
+    $('pauseBadge').style.display = (!S.running && S.decisions.some(d=>DECISIONS[d.type].critical)) ? 'inline-block' : 'none';
+  }
+
+  renderOffice();
+  renderDecisions();
+  renderMembers();
+  renderLog();
+  renderOverlay();
+}
+
+function renderOffice(){
+  const off = $('office');
+  const W = off.clientWidth || 700;
+  const agents = agentsToRender();
+  let html = '<div class="window" style="left:8%"></div><div class="window" style="left:42%"></div><div class="window" style="right:8%"></div>';
+  html += '<div class="deco" style="left:12px;top:76px">🪴</div><div class="deco" style="right:12px;top:76px">🪴</div>';
+  html += '<div class="deco" style="left:14px;bottom:14px">☕️</div><div class="deco" style="right:14px;bottom:14px">🗄️</div>';
+
+  // CEO席（上座・中央）— CEOもAI。株主（青野）はこの画面越しに見守る側
+  const ceo = agents.find(a=>a.id==='rei');
+  const staff = agents.filter(a=>a!==ceo);
+  if (ceo){
+    const nDec = mode==='live'
+      ? ((liveData && liveData.company.pending_decisions) || []).length
+      : S.decisions.length;
+    const ceoTask = nDec ? `株主へ上申中 ${nDec}件…` : (ceo.status==='idle' ? '' : (ceo.task || '経営全般を統括中'));
+    html += deskHTML({...ceo, task:ceoTask}, W/2 - 75, 84, true);
+  }
+
+  // 社員席（幅に応じて2〜4列）
+  const cols = Math.max(2, Math.min(4, Math.floor((W-40)/165)));
+  const dx = Math.min(230, (W-40)/cols);
+  const x0 = (W - dx*cols)/2 + (dx-150)/2;
+  const rows = Math.ceil(staff.length/cols);
+  staff.forEach((a,i)=>{
+    const col = i % cols, row = Math.floor(i/cols);
+    html += deskHTML(a, x0 + col*dx, 250 + row*155, false);
+  });
+  off.style.minHeight = (250 + rows*155 + 60) + 'px';
+  off.innerHTML = html;
+}
+
+function deskHTML(a, x, y, owner){
+  const st = a.status || 'idle';
+  const task = st==='idle' ? '💤 待機中…' : (a.task || '…');
+  const bubbleCls = st==='idle' ? 'bubble zzz' : 'bubble';
+  return `<div class="desk ${st} ${owner?'owner':''}" style="left:${x}px;top:${y}px">
+    <div style="position:relative;display:inline-block">
+      <div class="${bubbleCls}">${esc(task)}</div>
+      <span class="chair">${a.avatar}<span class="dot ${st}"></span></span>
+    </div>
+    <div class="table"></div>
+    <div class="name">${esc(a.name)}${owner?' ⭐️':''}</div>
+    <div class="role">${esc(a.role)}</div>
+  </div>`;
+}
+
+function boardHTML(b){
+  if (!b) return '';
+  const merits = (b.merits||[]).map(m=>`<li>${esc(m)}</li>`).join('');
+  const demerits = (b.demerits||[]).map(m=>`<li>${esc(m)}</li>`).join('');
+  const voices = (b.voices||[]).map(v=>`${v.av||''}「${esc(v.say)}」`).join('　');
+  return `<div class="board">
+    <div class="rec">🏛 役員会の結論: ${esc(b.rec||'')}</div>
+    ${merits ? `<div class="md"><b>メリット</b><ul class="plus">${merits}</ul></div>` : ''}
+    ${demerits ? `<div class="md"><b>デメリット</b><ul class="minus">${demerits}</ul></div>` : ''}
+    ${voices ? `<div class="voices">${voices}</div>` : ''}
+  </div>`;
+}
+
+const EMPTY_DEC = '<div class="empty">株主判断待ちの案件はありません。<br>（役員会の権限内の案件は自動で処理され、ログに残ります）</div>';
+
+function renderDecisions(){
+  const box = $('decisions');
+  if (mode==='live'){
+    const list = (liveData && liveData.company.pending_decisions) || [];
+    $('decCount').style.display = list.length ? 'inline-block' : 'none';
+    $('decCount').textContent = list.length;
+    box.innerHTML = list.length
+      ? list.map(d=>{
+          const b = (d.merits||d.demerits||d.recommendation) ? {
+            rec: d.recommendation, merits: d.merits, demerits: d.demerits,
+            voices: (d.opinions||[]).map(o=>({av:'', say:`${o.name}（${o.stance}）${o.comment||''}`})),
+          } : null;
+          return `<div class="card decision"><div class="t">${esc(d.title||'判断待ち')}</div><div class="d">${esc(d.desc||'')}</div>${boardHTML(b)}<div class="d" style="color:var(--gold)">→ Claudeに「${esc(d.title||'この件')}を承認/見送りで」と指示すれば反映されます</div></div>`;
+        }).join('')
+      : EMPTY_DEC;
+    return;
+  }
+  $('decCount').style.display = S.decisions.length ? 'inline-block' : 'none';
+  $('decCount').textContent = S.decisions.length;
+  box.innerHTML = S.decisions.length ? S.decisions.map(d=>{
+    const def = DECISIONS[d.type];
+    const opts = def.options(d.payload).map((o,i)=>
+      `<button onclick="decide(${d.uid},${i})">${esc(o.label)}${o.hint?`<span class="hint">${esc(o.hint)}</span>`:''}</button>`).join('');
+    return `<div class="card decision"><div class="t">${def.icon} ${esc(def.title(d.payload))}</div><div class="d">${esc(def.desc(d.payload))}</div>${boardHTML(def.board && def.board(d.payload))}<div class="opts">${opts}</div></div>`;
+  }).join('') : EMPTY_DEC;
+}
+
+function renderMembers(){
+  $('members').innerHTML = agentsToRender().map(a=>{
+    const st = a.status||'idle';
+    return `<div class="member"><span class="av">${a.avatar}</span>
+      <div class="info"><div class="nm">${esc(a.name)}<span>${esc(a.role)}</span></div>
+      <div class="tk">${esc(st==='idle' ? '待機中' : (a.task||''))}</div></div>
+      <span class="st ${st}">${STATUS_JA[st]||st}</span></div>`;
+  }).join('');
+}
+
+function renderLog(){
+  if (mode==='live'){
+    const list = (liveData && liveData.company.log) || [];
+    $('log').innerHTML = list.slice().reverse().slice(0,40).map(l=>
+      `<div><span class="day">${esc(l.date||'')}</span>${esc(l.text)}</div>`).join('') || '<div class="empty">ログなし</div>';
+    return;
+  }
+  $('log').innerHTML = S.log.slice(0,40).map(l=>
+    `<div><span class="day">Day${l.day}</span>${esc(l.text)}</div>`).join('') || '<div class="empty">まだログがありません。</div>';
+}
+
+function renderOverlay(){
+  const ov = $('overlay');
+  if (mode==='live' || !S.over){ ov.style.display='none'; return; }
+  ov.style.display = 'flex';
+  const box = $('overlayBox');
+  const hist = S.ownerHistory.slice(-8).map(h=>`<li>Day${h.day}｜${esc(h.title)} → <b>${esc(h.choice)}</b></li>`).join('') || '<li>（判断記録なし）</li>';
+  if (S.over.type === 'sold'){
+    const profit = S.over.price - S.invested;
+    box.className = 'box';
+    box.innerHTML = `<h2>🎉 事業売却成立！</h2>
+      <div class="big">${YEN(S.over.price)}</div>
+      <p>Day ${S.day} でExit達成。総投資 ${YEN(S.invested)} → 利益 <b style="color:var(--green)">${YEN(profit)}</b></p>
+      <p style="text-align:left">株主の主な判断:</p><ul>${hist}</ul>
+      <p>この学びを <b>sim-notes.md</b> に残して、実運用に活かそう。</p>
+      <button onclick="resetSim()">もう一度経営する</button>`;
+  } else {
+    box.className = 'box lose';
+    box.innerHTML = `<h2>💧 倒産…</h2>
+      <p>Day ${S.day} で資金が尽きました。総投資 ${YEN(S.invested)}。</p>
+      <p style="text-align:left">株主の主な判断:</p><ul>${hist}</ul>
+      <p>どの判断が命取りだったか振り返って、次に活かそう。</p>
+      <button onclick="resetSim()">再挑戦する</button>`;
+  }
+}
+
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------------- 制御・保存 ---------------- */
+function togglePlay(){ if (S.over) return; S.running = !S.running; render(); }
+function setSpeed(s){ S.speed = s; document.querySelectorAll('.speed').forEach(b=>b.classList.toggle('on', +b.dataset.s===s)); }
+function resetSim(){ if (S && S.day>0 && !S.over && !confirm('シミュレーションを最初からやり直しますか？')) return; S = newSim(); addLog('🏢 会社設立！自己資金300万円でスタート。まずはプロダクト開発から。'); save(); render(); }
+function save(){ try{ localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }catch(e){} }
+function load(){ try{ const j = localStorage.getItem(SAVE_KEY); if (j){ S = JSON.parse(j);
+  const rei = S.agents.find(a=>a.id==='rei'); if (rei && rei.role !== 'CEO') rei.role = 'CEO'; // 旧セーブ移行
+  return true; } }catch(e){} return false; }
+
+function setMode(m){
+  mode = m;
+  $('mSim').classList.toggle('on', m==='sim');
+  $('mLive').classList.toggle('on', m==='live');
+  if (m==='live'){ pollLive(); if (!liveTimer) liveTimer = setInterval(pollLive, 5000); }
+  else if (liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+  render();
+}
+
+/* ---- GitHub リモート読み込み（出先用） ---- */
+const GH_KEY = 'ai-company-gh';
+let liveSource = null, lastGhPoll = 0;
+
+function ghConf(){ try{ return JSON.parse(localStorage.getItem(GH_KEY)); }catch(e){ return null; } }
+function ghMsg(t){ $('ghMsg').textContent = t; }
+function saveGh(){
+  const repo = $('ghRepo').value.trim(), branch = $('ghBranch').value.trim() || 'main', token = $('ghToken').value.trim();
+  if (!repo || !token){ ghMsg('⚠️ リポジトリとトークンを入力してください'); return; }
+  localStorage.setItem(GH_KEY, JSON.stringify({repo, branch, token}));
+  lastGhPoll = 0; ghMsg('✔ 保存しました。実運用モードで自動的に使われます。'); pollLive();
+}
+function clearGh(){ localStorage.removeItem(GH_KEY); $('ghRepo').value=''; $('ghToken').value=''; ghMsg('設定を削除しました。'); }
+function fillGhForm(){ const c = ghConf(); if (c){ $('ghRepo').value = c.repo||''; $('ghBranch').value = c.branch||''; $('ghToken').value = c.token||''; } }
+
+async function fetchGh(file){
+  const c = ghConf();
+  const r = await fetch(`https://api.github.com/repos/${c.repo}/contents/${file}?ref=${c.branch||'main'}`, {
+    headers: {Accept:'application/vnd.github.raw+json', Authorization:'Bearer '+c.token},
+  });
+  if (!r.ok) throw new Error('GitHub API '+r.status);
+  return r.json();
+}
+
+async function pollLive(){
+  let data = null;
+  try{
+    const [c, a] = await Promise.all([
+      fetch('../state/company.json?t='+Date.now()).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
+      fetch('../state/agents.json?t='+Date.now()).then(r=>{ if(!r.ok) throw 0; return r.json(); }),
+    ]);
+    data = {company:c, agents:a}; liveSource = 'local';
+  }catch(e){
+    if (ghConf()){
+      if (Date.now() - lastGhPoll > 15000 || !liveData){
+        lastGhPoll = Date.now();
+        try{
+          const [c, a] = await Promise.all([fetchGh('company.json'), fetchGh('agents.json')]);
+          data = {company:c, agents:a}; liveSource = 'github';
+        }catch(e2){ data = null; liveSource = null; }
+      } else if (liveSource === 'github'){ data = liveData; } // 15秒間は前回値を維持
+    } else { liveSource = null; }
+  }
+  liveData = data;
+  if (mode==='live') render();
+}
+
+/* ---------------- メインループ ---------------- */
+function loop(t){
+  if (mode==='sim' && S.running && !S.over){
+    if (!lastT) lastT = t;
+    acc += (t - lastT) * S.speed;
+    lastT = t;
+    let steps = 0;
+    while (acc >= 1200 && steps < 40){ tick(); acc -= 1200; steps++; }
+    if (steps){ render(); save(); }
+  } else { lastT = t; acc = 0; }
+  requestAnimationFrame(loop);
+}
+
+if (!load()) { S = newSim(); addLog('🏢 会社設立！自己資金300万円でスタート。まずはプロダクト開発から。'); }
+fillGhForm();
+window.addEventListener('resize', render);
+render();
+requestAnimationFrame(loop);
+// GitHub Pages で開いた時（＝出先）は最初から実運用モード
+if (location.hostname.endsWith('github.io')) setMode('live');
+</script>
+</body>
+</html>
