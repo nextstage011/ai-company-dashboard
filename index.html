@@ -37,9 +37,10 @@
   #officeWrap{flex:1.5;position:relative;overflow:auto;background:var(--wall)}
   aside{width:370px;min-width:300px;border-left:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;overflow-y:auto}
   @media (max-width:900px){
-    main{flex-direction:column}
-    #officeWrap{flex:none;height:58vh}
-    aside{width:100%;min-width:0;border-left:none;border-top:1px solid var(--line);flex:1}
+    body{height:auto;min-height:100dvh;overflow:auto}
+    main{flex-direction:column;flex:none}
+    #officeWrap{flex:none;height:44vh;min-height:300px;overflow:auto}
+    aside{width:100%;min-width:0;border-left:none;border-top:1px solid var(--line);flex:none;overflow:visible}
   }
 
   /* ===== オフィス（ゲーム画面） ===== */
